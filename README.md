@@ -11,6 +11,10 @@ An open-source UI for moving content between **SitecoreAI** environments using t
 for the retired **Package Designer** (removed July 7, 2026) until Sitecore ships its official
 content migration app on the Marketplace.
 
+![Alt text](https://raw.githubusercontent.com/klpatil/content-courier/refs/heads/main/docs/Example-Run.png)
+
+
+
 Run it locally, deploy it to Vercel/Netlify, or register it as a Sitecore Marketplace
 standalone app.
 
