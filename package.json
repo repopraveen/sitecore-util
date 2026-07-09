@@ -1,8 +1,8 @@
 {
-  "name": "content-courier",
+  "name": "sync-content",
   "version": "0.1.0",
   "private": true,
-  "description": "Securely courier content between SitecoreAI environments using the Content Transfer and Item Transfer APIs. An interim, open-source UI replacing the retired Package Designer workflow.",
+  "description": "Embedded Sitecore Marketplace app for transferring content between SitecoreAI environments using the Content Transfer and Item Transfer APIs.",
   "license": "MIT",
   "scripts": {
     "dev": "next dev",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@sitecore-marketplace-sdk/client": "^0.3.5",
     "next": "^15.3.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

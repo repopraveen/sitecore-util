@@ -1,29 +1,29 @@
-# Content Courier 📦 `BETA`
+# Sync-Content `BETA`
 
-**You pick it. We move it.**
-
-> ⚠ **Beta:** not yet tested for all scenarios. Try it on a lower environment with a few
-> small items before moving anything significant.
-
-An open-source UI for moving content between **SitecoreAI** environments using the new
+Sync-Content is an embedded Sitecore Marketplace app for moving content between
+**SitecoreAI** environments with the
 [Content Transfer API](https://api-docs.sitecore.com/sai/content-transfer) and
-[Item Transfer API](https://api-docs.sitecore.com/sai/item-transfer) — an interim replacement
-for the retired **Package Designer** (removed July 7, 2026) until Sitecore ships its official
-content migration app on the Marketplace.
+[Item Transfer API](https://api-docs.sitecore.com/sai/item-transfer).
 
-![Alt text](https://raw.githubusercontent.com/klpatil/content-courier/refs/heads/main/docs/Example-Run.png)
+> **Beta:** test on a lower environment with a few small items before moving anything
+> significant.
 
-
-
-Run it locally, deploy it to Vercel/Netlify, or register it as a Sitecore Marketplace
-standalone app.
+The app is a Next.js application with server-side API routes that act as a restricted proxy to
+Sitecore hosts. It can run locally, deploy to a standard Next.js host, and be registered in the
+Sitecore Cloud Portal as an embedded Marketplace app.
 
 ## What it does
 
-Content Courier drives the full DEV → QA (or any env → env) transfer pipeline behind a simple
-guided UI:
+Sync-Content presents a lightweight wizard/dashboard UI around two supported transfer flows:
 
-1. **Authenticate** both environments (OAuth client credentials → `auth.sitecorecloud.io`)
+- **Package from source:** create a package with the Content Transfer API, relay it to the target,
+  and import it with the Item Transfer API.
+- **Import existing package:** consume a `.raif` blob that already exists on the target with the
+  Item Transfer API.
+
+For the source-to-target flow, Sync-Content drives the pipeline as follows:
+
+1. **Authenticate** both environments (OAuth client credentials -> `auth.sitecorecloud.io`)
 2. **Initiate** a transfer on the source with your item paths, scope, and merge strategy
 3. **Poll** until the source finishes packaging (tolerates the transient 404 — CFW-9663)
 4. **Relay chunks** from source to target server-side, keeping the `isMedia` flag paired
@@ -32,15 +32,19 @@ guided UI:
 6. **Consume** the `.raif` into the target content tree (Item Transfer API)
 7. **Verify** the blob landed (`BlobState: Transferred`)
 
-## Quick start (local)
+The app also initializes the required `@sitecore-marketplace-sdk/client` package when it is loaded
+inside a Sitecore Marketplace iframe. Outside an iframe, local development continues to work as a
+normal web app.
+
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000, fill in your source/target CM hosts and client credentials, add
-item paths, and hit **Start transfer**.
+Open http://localhost:3000, fill in your CM host and client credentials, choose a transfer flow,
+review the settings, and run the transfer.
 
 ### Getting credentials
 
@@ -48,11 +52,22 @@ For each environment, create an **environment automation client** (client ID + s
 Sitecore Cloud Portal / Deploy app. The token is requested with
 `audience=https://api.sitecorecloud.io` and `grant_type=client_credentials`.
 
-## Deploy
+## Build And Run
 
-**Vercel:** `vercel` (or import the repo at vercel.com). Zero config needed.
+```bash
+npm run typecheck
+npm run build
+npm run start
+```
 
-**Netlify:** import the repo — the Next.js runtime is detected automatically.
+## Deploy Hosting
+
+Deploy this as a normal Next.js app. Sitecore Marketplace embeds your deployed app by URL; it does
+not host this repository or require a source-controlled manifest file.
+
+- **Vercel:** import the repo or run `vercel`.
+- **Netlify:** import the repo and use the detected Next.js runtime.
+- **Other Node hosts:** run `npm run build`, then `npm run start`.
 
 ### Environment variables (all optional)
 
@@ -61,9 +76,38 @@ Sitecore Cloud Portal / Deploy app. The token is requested with
 | `ALLOWED_HOST_SUFFIXES` | `.sitecorecloud.io,.sitecore.io` | Comma-separated host suffixes the server proxy will forward to. Prevents the proxy routes from being used as an open relay. |
 | `SITECORE_AUTH_HOST` | `auth.sitecorecloud.io` | OAuth token host. |
 
+## Sitecore Marketplace Configuration
+
+Create and configure the app in **Sitecore Cloud Portal > App studio**.
+
+Recommended settings for this app:
+
+| Setting | Value |
+| --- | --- |
+| App name | `Sync-Content` |
+| App type | Embedded custom app |
+| Deployment URL | Your hosted URL, for example `https://sync-content.example.com` |
+| Route URL | `/` |
+| App logo | `${DEPLOYMENT_URL}/sync-content-logo.svg` |
+| API access | None required for the current implementation |
+| Permissions | No pop-ups, clipboard, or downloads required by default |
+
+After activation, install the app in the target organization. For local Marketplace testing, set the
+deployment URL to `http://localhost:3000` and run `npm run dev` on the same machine.
+
+This app uses custom environment automation client credentials entered by the user for each source
+and target environment. It does not currently use Marketplace built-in authorization for the content
+transfer calls, because the transfer workflow requires credentials for both environments selected by
+the operator.
+
+The **Import existing package** flow expects the target environment to already know about the
+`.raif` blob name supplied in the UI. Sync-Content does not upload local `.raif` files or assume any
+undocumented storage contract; it only calls the Item Transfer consume and verification endpoints
+through the existing proxy routes.
+
 ## Security notes
 
-- **Credentials never leave your browser tab** except to be exchanged for a token — they are
+- **Credentials never leave your browser tab** except to be exchanged for a token - they are
   kept in `sessionStorage` and sent only to this app's own API routes, which forward them to
   Sitecore's auth server. Nothing is persisted server-side.
 - The API routes are a thin CORS proxy restricted to allowlisted Sitecore hosts. If you host a
@@ -84,29 +128,23 @@ Sitecore Cloud Portal / Deploy app. The token is requested with
 | `OverrideExistingItem` | Incoming item replaces an existing one |
 | `KeepExistingItem` | Existing item wins; incoming skipped |
 | `OverrideExistingTree` | Replace the whole subtree (pair with `ItemAndDescendants`) |
-| ~~`LatestWin`~~ | **DO NOT USE — blocked by this app.** See Known issues below. |
+| ~~`LatestWin`~~ | **DO NOT USE - blocked by this app.** See Known issues below. |
 
 ## Known issues
 
-- **`LatestWin` can crash your environment** (community finding, July 2026 — pending Sitecore
+- **`LatestWin` can crash your environment** (community finding, July 2026 - pending Sitecore
   confirmation). The API docs list it as a valid merge strategy, but the server throws
   `System.InvalidOperationException: Strategy 'LatestWin' is not yet implemented`
-  (Sitecore.Kernel) during HttpModule initialization — which can take the whole CM down.
-  Content Courier removes it from the UI and rejects it server-side. A support ticket has
+  (Sitecore.Kernel) during HttpModule initialization - which can take the whole CM down.
+  Sync-Content removes it from the UI and rejects it server-side. A support ticket has
   been raised with Sitecore.
-- **Transient 404 on transfer status** right after initiation (Sitecore ref CFW-9663) — the
+- **Transient 404 on transfer status** right after initiation (Sitecore ref CFW-9663) - the
   app polls through it automatically.
-- **Transient 502/503 during consumption** — the CM can briefly return gateway errors while
+- **Transient 502/503 during consumption** - the CM can briefly return gateway errors while
   it consumes the `.raif`; the app retries automatically.
 - **Parent chain must exist on the target** with the same item IDs when using `SingleItem`
   scope, otherwise the transfer completes with errors and the item does not land. Transfer
   parents first or use `ItemAndDescendants` from a common ancestor.
-
-## Registering as a Marketplace app (optional)
-
-The app sends `frame-ancestors` headers allowing it to be embedded in the Sitecore Cloud
-Portal. Register it in **Developer Studio** as a **Standalone** extension point pointing at
-your deployed URL.
 
 ## Credits
 
@@ -116,4 +154,4 @@ your deployed URL.
 
 ## License
 
-MIT — use it, fork it, improve it. This tool is not affiliated with or endorsed by Sitecore.
+MIT. This tool is not affiliated with or endorsed by Sitecore.

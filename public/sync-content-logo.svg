@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Sync-Content logo</title>
+  <desc id="desc">White SC letters on a teal and blue rounded square.</desc>
+  <defs>
+    <linearGradient id="mark" x1="72" x2="440" y1="64" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#mark)"/>
+  <path
+    fill="#ffffff"
+    d="M143 326c23 20 51 31 83 31 39 0 63-14 63-37 0-20-16-31-57-40l-30-7c-60-13-92-43-92-88 0-56 48-94 120-94 43 0 81 13 113 38l-38 55c-23-17-48-26-76-26-34 0-55 13-55 34 0 19 16 29 56 38l30 7c62 14 93 42 93 87 0 59-49 99-128 99-51 0-96-16-131-47l49-50z"
+  />
+  <path
+    fill="#ffffff"
+    fill-opacity="0.9"
+    d="M378 121h34v270h-34V121zM338 121h34v270h-34V121z"
+  />
+</svg>

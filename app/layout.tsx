@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Content Courier — Sitecore content transfer",
+  title: "Sync-Content - Sitecore transfer wizard",
   description:
-    "Securely courier content between SitecoreAI environments using the Content Transfer and Item Transfer APIs.",
+    "Embedded Sitecore Marketplace app for guided Content Transfer and Item Transfer workflows.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

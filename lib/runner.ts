@@ -98,6 +98,88 @@ export interface RunInput {
   dataTrees: DataTree[];
 }
 
+export interface ItemImportInput {
+  target: EnvCredentials;
+  database: string;
+  blobName: string;
+}
+
+async function verifyBlob(
+  target: EnvCredentials,
+  targetToken: string,
+  database: string,
+  blobName: string,
+  cb: RunCallbacks,
+  warnings: string[]
+) {
+  cb.onStep("verify", "active");
+  const verifyDeadline = Date.now() + 10 * 60 * 1000;
+  let verified = false;
+  let verifyPollErrors = 0;
+  while (Date.now() < verifyDeadline) {
+    let blob: { BlobState?: string; Error?: string | null; SourceName?: string };
+    try {
+      blob = await api("/api/transfer/verify", {
+        targetHost: target.host,
+        targetToken,
+        blobName,
+      });
+      verifyPollErrors = 0;
+    } catch (e) {
+      // The CM often returns transient 502/503 while it is busy consuming
+      // the .raif — keep polling instead of failing the whole run.
+      verifyPollErrors++;
+      if (verifyPollErrors >= 8) throw e;
+      cb.onStep("verify", "active", `Target busy - retrying (${verifyPollErrors}/8)...`);
+      await sleep(8000);
+      continue;
+    }
+
+    if (blob.BlobState === "Transferred") {
+      verified = true;
+      cb.onStep("verify", "done", "BlobState: Transferred");
+      break;
+    }
+
+    // Terminal, but partial: the .raif was consumed and content landed,
+    // though some items had errors (missing templates, broken links, ...).
+    if (blob.BlobState === "TransferredWithErrors") {
+      verified = true;
+      let issues: string[] = blob.Error ? [blob.Error] : [];
+      try {
+        const diag = await api<TransferDiagnostics>("/api/transfer/details", {
+          targetHost: target.host,
+          targetToken,
+          blobName,
+          database,
+        });
+        issues = issues.concat(summarizeDiagnostics(diag));
+      } catch {
+        /* diagnostics are best-effort */
+      }
+      const summary = issues.length
+        ? issues.join(" | ")
+        : "No per-item detail returned by the API - check the item(s) in the target Content Editor.";
+      warnings.push(`Consumed with errors (${blobName}): ${summary}`);
+      cb.onStep("verify", "warn", `BlobState: TransferredWithErrors - ${summary}`);
+      break;
+    }
+
+    // Terminal failure states.
+    if (blob.Error || /^(failed|error|faulted)$/i.test(blob.BlobState ?? "")) {
+      throw new Error(
+        `Blob transfer failed (BlobState: ${blob.BlobState ?? "unknown"})${
+          blob.Error ? `: ${blob.Error}` : ""
+        }`
+      );
+    }
+
+    cb.onStep("verify", "active", `BlobState: ${blob.BlobState ?? "..."}`);
+    await sleep(4000);
+  }
+  if (!verified) throw new Error("Timed out verifying the blob transfer on the target.");
+}
+
 export async function runTransfer(input: RunInput, cb: RunCallbacks): Promise<RunResult> {
   const { source, target, database, dataTrees } = input;
   const warnings: string[] = [];
@@ -193,73 +275,30 @@ export async function runTransfer(input: RunInput, cb: RunCallbacks): Promise<Ru
     });
     cb.onStep("consume", "done", fileName);
 
-    cb.onStep("verify", "active");
-    const verifyDeadline = Date.now() + 10 * 60 * 1000;
-    let verified = false;
-    let verifyPollErrors = 0;
-    while (Date.now() < verifyDeadline) {
-      let blob: { BlobState?: string; Error?: string | null; SourceName?: string };
-      try {
-        blob = await api("/api/transfer/verify", {
-          targetHost: target.host,
-          targetToken,
-          blobName: fileName,
-        });
-        verifyPollErrors = 0;
-      } catch (e) {
-        // The CM often returns transient 502/503 while it is busy consuming
-        // the .raif — keep polling instead of failing the whole run.
-        verifyPollErrors++;
-        if (verifyPollErrors >= 8) throw e;
-        cb.onStep("verify", "active", `Target busy — retrying (${verifyPollErrors}/8)…`);
-        await sleep(8000);
-        continue;
-      }
-
-      if (blob.BlobState === "Transferred") {
-        verified = true;
-        cb.onStep("verify", "done", "BlobState: Transferred");
-        break;
-      }
-
-      // Terminal, but partial: the .raif was consumed and content landed,
-      // though some items had errors (missing templates, broken links, …).
-      if (blob.BlobState === "TransferredWithErrors") {
-        verified = true;
-        let issues: string[] = blob.Error ? [blob.Error] : [];
-        try {
-          const diag = await api<TransferDiagnostics>("/api/transfer/details", {
-            targetHost: target.host,
-            targetToken,
-            blobName: fileName,
-            database,
-          });
-          issues = issues.concat(summarizeDiagnostics(diag));
-        } catch {
-          /* diagnostics are best-effort */
-        }
-        const summary = issues.length
-          ? issues.join(" | ")
-          : "No per-item detail returned by the API — check the item(s) in the target Content Editor.";
-        warnings.push(`Consumed with errors (${fileName}): ${summary}`);
-        cb.onStep("verify", "warn", `BlobState: TransferredWithErrors — ${summary}`);
-        break;
-      }
-
-      // Terminal failure states.
-      if (blob.Error || /^(failed|error|faulted)$/i.test(blob.BlobState ?? "")) {
-        throw new Error(
-          `Blob transfer failed (BlobState: ${blob.BlobState ?? "unknown"})${
-            blob.Error ? `: ${blob.Error}` : ""
-          }`
-        );
-      }
-
-      cb.onStep("verify", "active", `BlobState: ${blob.BlobState ?? "…"}`);
-      await sleep(4000);
-    }
-    if (!verified) throw new Error("Timed out verifying the blob transfer on the target.");
+    await verifyBlob(target, targetToken, database, fileName, cb, warnings);
   }
+
+  return { warnings };
+}
+
+export async function runItemImport(input: ItemImportInput, cb: RunCallbacks): Promise<RunResult> {
+  const { target, database, blobName } = input;
+  const warnings: string[] = [];
+
+  cb.onStep("auth", "active");
+  const targetToken = await getToken(target);
+  cb.onStep("auth", "done");
+
+  cb.onStep("consume", "active", blobName);
+  await api("/api/transfer/consume", {
+    targetHost: target.host,
+    targetToken,
+    database,
+    blobName,
+  });
+  cb.onStep("consume", "done", blobName);
+
+  await verifyBlob(target, targetToken, database, blobName, cb, warnings);
 
   return { warnings };
 }
