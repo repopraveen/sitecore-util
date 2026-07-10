@@ -1,4 +1,4 @@
-# Sync-Content `BETA`
+# Sync-Content `BETA` 07-10-2026
 
 Sync-Content is an embedded Sitecore Marketplace app for moving content between
 **SitecoreAI** environments with the
